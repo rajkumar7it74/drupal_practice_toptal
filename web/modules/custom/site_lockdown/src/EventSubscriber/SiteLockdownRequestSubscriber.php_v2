@@ -24,7 +24,7 @@ class SiteLockdownRequestSubscriber implements EventSubscriberInterface {
   ) {}
 
   public static function getSubscribedEvents(): array {
-    return [KernelEvents::REQUEST => ['onRequest', 1000]];
+    return [KernelEvents::REQUEST => ['onRequest', 30]];
   }
 
   public function onRequest(RequestEvent $event): void {
@@ -77,27 +77,7 @@ class SiteLockdownRequestSubscriber implements EventSubscriberInterface {
     }
 
     // ✅ redirect ALL other anonymous requests to storm-centre page (302)
-    // $url = Url::fromRoute('entity.node.canonical', ['node' => $allowed_nid])->toString();
-    // $event->setResponse(new RedirectResponse($url, 302));
-
-    // Homepage redirect can be disabled via config.
-    $config = $this->configFactory->get('site_lockdown.settings');
-    $allow_home = (bool) ($config->get('allow_homepage_redirect') ?? TRUE);
-
-    // Detect homepage reliably.
-    $is_homepage = ($path === '/');
-
-    // If homepage redirect is OFF and this is homepage -> allow homepage only.
-    if (!$allow_home && $is_homepage) {
-    return;
-    }
-
-    // Redirect ALL other anonymous requests to storm-centre page (302), uncached.
     $url = Url::fromRoute('entity.node.canonical', ['node' => $allowed_nid])->toString();
-    $response = new RedirectResponse($url, 302);
-    $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-    $response->headers->set('Pragma', 'no-cache');
-    $event->setResponse($response);
-
+    $event->setResponse(new RedirectResponse($url, 302));
   }
 }
