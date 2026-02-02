@@ -1,0 +1,3 @@
+bypass site lockdown:
+  title: 'Bypass site lockdown'
+  description: 'Access the full site even when lockdown is enabled.'

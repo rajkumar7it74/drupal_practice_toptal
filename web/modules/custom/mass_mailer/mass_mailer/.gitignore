@@ -1,0 +1,37 @@
+# Drupal core (if not using git submodules)
+/core
+/vendor
+/composer.json
+/composer.lock
+
+# Dependencies installed by Composer
+/vendor/
+
+# Drupal files
+/sites/*/files/
+/sites/*/private/
+/sites/*/settings.php
+/sites/*/settings.local.php
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Build artifacts
+node_modules/
+.sass-cache/
+*.css.map
+
+# Temporary files
+*.tmp
+*.log
+*.cache

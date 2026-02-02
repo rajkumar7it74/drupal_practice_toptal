@@ -1,0 +1,11 @@
+services:
+  site_lockdown.request_subscriber:
+    class: Drupal\site_lockdown\EventSubscriber\SiteLockdownRequestSubscriber
+    arguments: ['@state', '@config.factory', '@current_user', '@path.current', '@request_stack']
+    tags:
+      - { name: event_subscriber }
+  site_lockdown.commands:
+    class: Drupal\site_lockdown\Commands\SiteLockdownCommands
+    arguments: ['@state', '@entity_type.manager']
+    tags:
+      - { name: drush.command }

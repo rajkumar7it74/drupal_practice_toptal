@@ -1,0 +1,113 @@
+<?php
+
+use Drupal\Core\Entity\EntityInterface;
+use Drupal\Core\Url;
+
+/**
+ * Implements hook_entity_insert().
+ *
+ * Fires when a new entity is created and saved.
+ */
+function node_publish_logger_entity_insert(EntityInterface $entity) {
+  // Only act on nodes.
+  if ($entity->getEntityTypeId() !== 'node') {
+    return;
+  }
+dump($entity);
+dump($entity->isPublished());
+  // If the new node is published.
+  if ($entity->isPublished()) {
+    node_publish_logger_log_if_restricted_word($entity, 'created');
+    // \Drupal::logger('node_publish_logger')->notice(
+    //   'New node "@title" (ID: @nid) has been created and published.',
+    //   [
+    //     '@title' => $entity->label(),
+    //     '@nid' => $entity->id(),
+    //   ]
+    // );
+  }
+}
+
+/**
+ * Implements hook_entity_update().
+ *
+ * Fires when an existing entity is updated.
+ */
+function node_publish_logger_entity_update(EntityInterface $entity) {
+  // Only act on nodes.
+  if ($entity->getEntityTypeId() !== 'node') {
+    return;
+  }
+
+  // Original version before the save.
+  /** @var \Drupal\node\NodeInterface|null $original */
+  $original = $entity->original ?? NULL;
+
+  if (!$original) {
+    return;
+  }
+
+  $was_published = $original->isPublished();
+  $now_published = $entity->isPublished();
+
+  // Detect transition: unpublished → published.
+  if (!$was_published && $now_published) {
+    // \Drupal::logger('node_publish_logger')->notice(
+    //   'Existing node "@title" (ID: @nid) has just been published.',
+    //   [
+    //     '@title' => $entity->label(),
+    //     '@nid' => $entity->id(),
+    //   ]
+    // );
+    node_publish_logger_log_if_restricted_word($entity, 'updated');
+  }
+}
+
+/**
+ * Helper: Log message if node body contains restricted words.
+ *
+ * @param \Drupal\Core\Entity\EntityInterface $entity
+ *   The node entity.
+ * @param string $action
+ *   The action type: 'created' or 'updated'.
+ */
+function node_publish_logger_log_if_restricted_word(EntityInterface $entity, string $action) {
+  // Ensure the node has a body field.
+  if (!$entity->hasField('body') || $entity->get('body')->isEmpty()) {
+    return;
+  }
+
+  // Get the body text (assuming single-valued body).
+  $body_text = $entity->get('body')->value ?? '';
+
+  // Restricted words (case-insensitive).
+  $restricted_words = ['Toptal', 'Drupal', 'Developer'];
+
+  $matched_word = NULL;
+
+  foreach ($restricted_words as $word) {
+    if (stripos($body_text, $word) !== FALSE) {
+      $matched_word = $word;
+      break;
+    }
+  }
+
+  // If no restricted word found, do nothing.
+  if ($matched_word === NULL) {
+    return;
+  }
+
+  // Build absolute node URL.
+  $url = Url::fromRoute('entity.node.canonical', ['node' => $entity->id()], ['absolute' => TRUE])->toString();
+
+  // Log the informational message.
+  \Drupal::logger('node_publish_logger')->info(
+    "Node '@title' has been @action with the word '@word' inside its body. Link: @link",
+    [
+      '@title' => $entity->label(),
+      '@action' => $action,
+      '@word' => $matched_word,
+      '@link' => $url,
+    ]
+  );
+}

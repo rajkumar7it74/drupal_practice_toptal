@@ -1,0 +1,7 @@
+mass_mailer.settings:
+  type: config_object
+  label: 'Mass Mailer settings'
+  mapping:
+    batch_size:
+      type: integer
+      label: 'Default batch size'

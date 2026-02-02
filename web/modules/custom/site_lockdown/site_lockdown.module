@@ -1,0 +1,118 @@
+<?php
+
+use Drupal\Core\Entity\EntityInterface;
+use Drupal\node\NodeInterface;
+
+/**
+ * Implements hook_entity_insert().
+ */
+function site_lockdown_entity_insert(EntityInterface $entity): void {
+  if ($entity instanceof NodeInterface) {
+    _site_lockdown_handle_stormcentre($entity);
+  }
+}
+
+/**
+ * Implements hook_entity_update().
+ */
+function site_lockdown_entity_update(EntityInterface $entity): void {
+  if ($entity instanceof NodeInterface) {
+    _site_lockdown_handle_stormcentre($entity);
+  }
+}
+
+function _site_lockdown_handle_stormcentre(NodeInterface $node): void {
+  // If we are in replacement flow, do not disable lockdown on old unpublish.
+  if (\Drupal::state()->get('site_lockdown.replacing', FALSE)) {
+    // Still allow publish logic (new page) to run in normal flow.
+    // But for the old node update call, just skip.
+    return;
+  }
+
+  if ($node->bundle() !== 'storm-centre') {
+    return;
+  }
+
+  $state = \Drupal::state();
+  $enabled = (bool) $state->get('site_lockdown.enabled', FALSE);
+  $active_nid = (int) $state->get('site_lockdown.allowed_nid', 0);
+
+  $original = $node->original ?? NULL;
+  $was_published = $original ? (bool) $original->isPublished() : FALSE;
+  $is_published = (bool) $node->isPublished();
+
+  // ✅ CASE: unpublished -> published (Scheduler/manual)
+  if (!$was_published && $is_published) {
+
+    // If there is an active storm-centre already and it is different: unpublish old + email author.
+    if ($enabled && $active_nid && $active_nid !== (int) $node->id()) {
+      _site_lockdown_unpublish_old_and_email($active_nid, (int) $node->id());
+    }
+
+    // Enable lockdown and set current.
+    $state->set('site_lockdown.enabled', TRUE);
+    $state->set('site_lockdown.allowed_nid', (int) $node->id());
+    return;
+  }
+
+  // ✅ CASE: published -> unpublished
+  if ($was_published && !$is_published) {
+    // If the unpublished one is currently active, disable lockdown.
+    if ($enabled && $active_nid === (int) $node->id()) {
+      $state->set('site_lockdown.enabled', FALSE);
+      $state->delete('site_lockdown.allowed_nid');
+    }
+    return;
+  }
+}
+
+function _site_lockdown_unpublish_old_and_email(int $old_nid, int $new_nid): void {
+  /** @var \Drupal\node\NodeStorageInterface $storage */
+  $storage = \Drupal::entityTypeManager()->getStorage('node');
+
+  /** @var \Drupal\node\NodeInterface|null $old */
+  $old = $storage->load($old_nid);
+  if (!$old || $old->bundle() !== 'storm-centre' || !$old->isPublished()) {
+    return;
+  }
+
+  // Unpublish old.
+  $old->setUnpublished();
+  // Avoid infinite recursion: mark temporary flag in state to skip if needed.
+  // But here it's safe because it flips published->unpublished and our handler
+  // will run and may disable lockdown; we DON'T want that because we immediately
+  // set lockdown to the new node in the publish handler.
+  // So: disable unlock during replacement using a short-lived state flag.
+  \Drupal::state()->set('site_lockdown.replacing', TRUE);
+  $old->save();
+  \Drupal::state()->delete('site_lockdown.replacing');
+
+  // Email author of old page.
+  $author = $old->getOwner();
+  if ($author && $author->getEmail()) {
+    $mailManager = \Drupal::service('plugin.manager.mail');
+    $module = 'site_lockdown';
+    $key = 'stormcentre_replaced';
+    $langcode = $author->getPreferredLangcode();
+    $params = [
+      'old_title' => $old->label(),
+      'old_nid' => $old_nid,
+      'new_nid' => $new_nid,
+    ];
+    $mailManager->mail($module, $key, $author->getEmail(), $langcode, $params);
+  }
+}
+
+/**
+ * Implements hook_mail().
+ */
+function site_lockdown_mail($key, &$message, $params): void {
+  if ($key === 'stormcentre_replaced') {
+    $message['subject'] = t('Your Storm Centre page was unpublished (replaced)');
+    $message['body'][] = t("Your Storm Centre page '@title' (NID: @old) was unpublished because a newer Storm Centre page (NID: @new) was published and is now active.", [
+      '@title' => $params['old_title'],
+      '@old' => $params['old_nid'],
+      '@new' => $params['new_nid'],
+    ]);
+  }
+}

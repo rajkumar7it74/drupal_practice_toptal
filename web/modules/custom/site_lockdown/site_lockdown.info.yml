@@ -1,0 +1,5 @@
+name: Site Lockdown (Storm Centre)
+type: module
+description: Locks site to a single storm-centre page on publish, switches on newer publish, unpublishes old and emails author.
+core_version_requirement: ^10 || ^11
+package: Custom

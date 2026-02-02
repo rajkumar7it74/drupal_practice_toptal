@@ -1,0 +1,4 @@
+send mass mail:
+  title: 'Send mass mail'
+  description: 'Access Mass Mailer form and send bulk emails.'
+  restrict access: true

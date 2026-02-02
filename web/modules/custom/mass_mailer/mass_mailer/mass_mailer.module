@@ -1,0 +1,62 @@
+<?php
+
+/**
+ * @file
+ * Mass Mailer module.
+ *
+ * Provides functionality for sending bulk emails via an administrative form.
+ */
+
+/**
+ * Implements hook_mail().
+ *
+ * Formats email messages for bulk sending.
+ *
+ * @param string $key
+ *   The mail key identifier. Only 'bulk_send' is handled by this module.
+ * @param array &$message
+ *   An array to be filled in with message elements. Elements include:
+ *   - subject: Email subject line
+ *   - body: Email body as an array of lines
+ *   - headers: Array of email headers (From, Reply-To, Return-Path)
+ * @param array $params
+ *   An array of parameters passed from the caller:
+ *   - subject: The email subject line
+ *   - body: The plain text email body
+ *   - sender_email: The sender's email address (optional)
+ *
+ * @see \Drupal\Core\Mail\MailManagerInterface
+ */
+function mass_mailer_mail($key, &$message, $params) {
+  if ($key === 'bulk_send') {
+    // Sanitize subject to prevent header injection.
+    $subject = $params['subject'] ?? '';
+    // Remove newlines and carriage returns that could be used for header injection.
+    $subject = preg_replace('/[\r\n]/', '', $subject);
+    $message['subject'] = $subject;
+    
+    // Plain-text body.
+    $message['body'] = [$params['body'] ?? ''];
+
+    // Headers (From/Reply-To) if provided.
+    // SECURITY: Sanitize sender email to prevent email header injection attacks.
+    if (!empty($params['sender_email'])) {
+      $sender = $params['sender_email'];
+      // Validate email format.
+      if (filter_var($sender, FILTER_VALIDATE_EMAIL)) {
+        // Remove any newlines, carriage returns, or other control characters
+        // that could be used for header injection (CRLF, LF, CR).
+        $sender = preg_replace('/[\r\n]/', '', $sender);
+        // Further sanitize: only allow printable ASCII characters in email.
+        $sender = filter_var($sender, FILTER_SANITIZE_EMAIL);
+        
+        // Only set headers if email is still valid after sanitization.
+        if (filter_var($sender, FILTER_VALIDATE_EMAIL)) {
+          $message['headers']['From'] = $sender;
+          $message['headers']['Reply-To'] = $sender;
+          $message['headers']['Return-Path'] = $sender;
+        }
+      }
+    }
+  }
+}

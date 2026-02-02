@@ -1,0 +1,3 @@
+stormcentre_replaced:
+  label: 'Storm Centre page replaced'
+  description: 'Email sent to the author when their storm-centre page is unpublished due to a newer storm-centre being published.'

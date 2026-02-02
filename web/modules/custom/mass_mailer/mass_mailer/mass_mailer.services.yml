@@ -1,0 +1,4 @@
+services:
+  mass_mailer.batch_service:
+    class: Drupal\mass_mailer\Service\MassMailerBatchService
+    arguments: ['@plugin.manager.mail', '@language_manager', '@logger.factory', '@messenger', '@file_system']

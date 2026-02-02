@@ -1,0 +1,7 @@
+site_lockdown.settings:
+  path: '/admin/config/system/site-lockdown'
+  defaults:
+    _form: '\Drupal\site_lockdown\Form\SiteLockdownSettingsForm'
+    _title: 'Storm Centre Lockdown'
+  requirements:
+    _permission: 'administer site configuration'

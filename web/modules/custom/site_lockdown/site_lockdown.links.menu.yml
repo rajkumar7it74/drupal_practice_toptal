@@ -1,0 +1,6 @@
+site_lockdown.settings:
+  title: 'Storm Centre Lockdown'
+  description: 'Configure storm-centre site lockdown behavior'
+  parent: system.admin_config_system
+  route_name: site_lockdown.settings
+  weight: 100

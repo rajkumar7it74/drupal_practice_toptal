@@ -1,0 +1,5 @@
+name: Node Publish Logger
+type: module
+description: Logs a message whenever any node gets published.
+core_version_requirement: ^10 || ^11
+package: Custom

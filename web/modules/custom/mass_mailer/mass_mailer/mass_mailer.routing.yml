@@ -1,0 +1,16 @@
+mass_mailer.form:
+  path: '/admin/config/system/mass-mailer'
+  defaults:
+    _form: '\Drupal\mass_mailer\Form\MassMailerForm'
+    _title: 'Mass Mailer'
+  requirements:
+    _permission: 'send mass mail'
+
+mass_mailer.download_failed_csv:
+  path: '/admin/config/system/mass-mailer/download-failed/{file}'
+  defaults:
+    _controller: '\Drupal\mass_mailer\Controller\FailedEmailsDownloadController::download'
+    _title: 'Download Failed Emails CSV'
+  requirements:
+    _permission: 'send mass mail'
+    file: '[a-zA-Z0-9_\-\.]+'

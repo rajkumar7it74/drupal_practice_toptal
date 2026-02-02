@@ -1,0 +1,15 @@
+CHANGELOG.txt for Mass Mailer
+==============================
+
+8.x-1.0, 2024-XX-XX
+-------------------
+- Initial release
+- Basic bulk email functionality with admin form
+- Support for recipient input via text paste or CSV file upload
+- Batch processing with configurable batch size
+- Failed email tracking with CSV export
+- Email validation and deduplication
+- Security hardening (header injection prevention, input validation, resource limits)
+- Dependency injection implementation
+- Proper file access controls
+- Comprehensive error handling and logging

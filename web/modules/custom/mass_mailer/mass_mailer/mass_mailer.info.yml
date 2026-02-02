@@ -1,0 +1,7 @@
+name: 'Mass Mailer'
+type: module
+description: 'Send bulk emails from an admin form using pasted addresses or a CSV upload. Supports batch processing and failed email tracking.'
+core_version_requirement: '^10 || ^11'
+package: Mail
+dependencies:
+  - drupal:file
