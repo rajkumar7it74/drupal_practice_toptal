@@ -3,6 +3,7 @@
 namespace Drupal\link_fragment_widget\Plugin\Field\FieldWidget;
 
 use Drupal\Component\Utility\Html;
+use Drupal\Component\Utility\NestedArray;
 use Drupal\Core\Field\FieldItemListInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Url;
@@ -28,25 +29,23 @@ class LinkWithFragmentWidget extends LinkWidget {
   public function formElement(FieldItemListInterface $items, $delta, array $element, array &$form, FormStateInterface $form_state) {
     $element = parent::formElement($items, $delta, $element, $form, $form_state);
 
-    // SAFE wrapper id (works even if #parents is string).
-    $parents = $element['#parents'] ?? [];
-    if (is_string($parents)) {
-      $parents = [$parents];
+    // Robust unique wrapper id (safe in nested paragraphs too).
+    // Use #array_parents (always an array) if available.
+    $ap = $element['#array_parents'] ?? [];
+    if (!is_array($ap)) {
+      $ap = [];
     }
-    elseif (!is_array($parents)) {
-      $parents = [];
-    }
-    $wrapper_id = Html::getUniqueId(implode('-', $parents) . '-fragment-wrapper');
+    $wrapper_id = Html::getUniqueId(implode('-', $ap) . '-fragment-wrapper-' . $delta);
 
-    // Default fragment from saved link options (if any).
+    // Read saved fragment from options (if any).
     $default_fragment = '';
     if (!empty($items[$delta]->options) && is_array($items[$delta]->options)) {
-      $default_fragment = $items[$delta]->options['fragment'] ?? '';
+      $default_fragment = (string) ($items[$delta]->options['fragment'] ?? '');
     }
 
-    // Get current URI (prefer form_state value if user changed it).
+    // Determine current URI (prefer form_state, fallback to default value).
     $uri = '';
-    if (isset($element['uri']['#parents']) && is_array($element['uri']['#parents'])) {
+    if (!empty($element['uri']['#parents']) && is_array($element['uri']['#parents'])) {
       $current = $form_state->getValue($element['uri']['#parents']);
       if (is_string($current)) {
         $uri = $current;
@@ -56,10 +55,10 @@ class LinkWithFragmentWidget extends LinkWidget {
       $uri = $element['uri']['#default_value'];
     }
 
-    // Build fragment options based on selected URI.
+    // Build dropdown options: paragraph-<id> => paragraph-<id>
     $fragment_options = $this->buildFragmentOptions($uri);
 
-    // AJAX: refresh fragment dropdown when URI changes.
+    // Attach AJAX to uri field to refresh fragment dropdown.
     if (isset($element['uri'])) {
       $element['uri']['#ajax'] = [
         'callback' => [static::class, 'ajaxFragmentCallback'],
@@ -69,7 +68,7 @@ class LinkWithFragmentWidget extends LinkWidget {
       ];
     }
 
-    // Wrap fragment select so AJAX replaces only this part.
+    // Wrapper container (ONLY this will be replaced by AJAX).
     $element['fragment_wrapper'] = [
       '#type' => 'container',
       '#attributes' => ['id' => $wrapper_id],
@@ -81,61 +80,60 @@ class LinkWithFragmentWidget extends LinkWidget {
       '#options' => $fragment_options,
       '#default_value' => $default_fragment ?: '',
       '#empty_value' => '',
+      '#empty_option' => $this->t('- None -'),
     ];
 
     return $element;
   }
 
   /**
-   * AJAX callback: return only the fragment wrapper container.
+   * AJAX callback: return ONLY the fragment wrapper container.
    */
   public static function ajaxFragmentCallback(array &$form, FormStateInterface $form_state): array {
     $trigger = $form_state->getTriggeringElement();
-    $parents = $trigger['#parents'] ?? [];
 
-    if (!is_array($parents) || empty($parents)) {
-      return $form;
+    // Use #array_parents to locate our widget instance in the built form.
+    // Typical array_parents ends with "... uri".
+    $ap = $trigger['#array_parents'] ?? NULL;
+    if (!is_array($ap) || empty($ap)) {
+      // Return an empty container instead of whole form.
+      return ['#type' => 'container'];
     }
 
-    // Typical parents: [..., uri] -> replace with fragment_wrapper.
-    array_pop($parents);
-    $parents[] = 'fragment_wrapper';
+    // Replace last key 'uri' with 'fragment_wrapper'.
+    array_pop($ap);
+    $ap[] = 'fragment_wrapper';
 
-    return static::nestedElement($form, $parents);
-  }
-
-  /**
-   * Safe nested element fetcher.
-   */
-  private static function nestedElement(array $array, array $parents): array {
-    $ref = $array;
-    foreach ($parents as $p) {
-      if (!isset($ref[$p])) {
-        return $array;
-      }
-      $ref = $ref[$p];
+    $found = NestedArray::getValue($form, $ap);
+    if (is_array($found)) {
+      return $found;
     }
-    return $ref;
+
+    // If not found, return empty container (never whole form).
+    return ['#type' => 'container'];
   }
 
   /**
    * Build fragment options for a given URI.
+   *
+   * Output format (as requested):
+   *   ['paragraph-123' => 'paragraph-123', ...]
    */
   private function buildFragmentOptions(string $uri): array {
-    $options = ['' => (string) $this->t('- None -')];
+    $options = [];
 
     $node = $this->resolveNodeFromUri($uri);
     if (!$node) {
       return $options;
     }
 
-    // Your ho_page paragraphs field.
+    // IMPORTANT: change if your field machine name differs.
     $field_name = 'field_ho_page_content';
 
     if ($node->hasField($field_name)) {
       foreach ($node->get($field_name)->referencedEntities() as $paragraph) {
-        $fragment_id = 'paragraph-' . $paragraph->id();
-        $options[$fragment_id] = $fragment_id;
+        $key = 'paragraph-' . $paragraph->id();
+        $options[$key] = $key;
       }
     }
 
@@ -151,11 +149,13 @@ class LinkWithFragmentWidget extends LinkWidget {
       return NULL;
     }
 
+    // entity:node/10
     if (str_starts_with($uri, 'entity:node/')) {
       $nid = (int) substr($uri, strlen('entity:node/'));
       return $nid > 0 ? Node::load($nid) : NULL;
     }
 
+    // internal:/node/10 or internal:/alias
     if (str_starts_with($uri, 'internal:')) {
       try {
         $url = Url::fromUri($uri);
@@ -182,10 +182,10 @@ class LinkWithFragmentWidget extends LinkWidget {
       unset($value['fragment_wrapper']);
 
       if (!empty($fragment)) {
-        // Recommended: store fragment in options.
+        // Recommended storage (Drupal renders it as #fragment).
         $value['options']['fragment'] = $fragment;
 
-        // Optional: also append into uri (your requirement).
+        // If you still want literal url#fragment stored in uri too (optional).
         if (!empty($value['uri']) && strpos($value['uri'], '#') === FALSE) {
           $value['uri'] .= '#' . $fragment;
         }
