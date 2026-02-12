@@ -2,6 +2,7 @@
 
 namespace Drupal\link_fragment_widget\Plugin\Field\FieldWidget;
 
+use Drupal\Component\Utility\Html;
 use Drupal\Core\Field\FieldItemListInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Url;
@@ -27,8 +28,15 @@ class LinkWithFragmentWidget extends LinkWidget {
   public function formElement(FieldItemListInterface $items, $delta, array $element, array &$form, FormStateInterface $form_state) {
     $element = parent::formElement($items, $delta, $element, $form, $form_state);
 
-    // Build a robust unique wrapper id (safe even when #parents is missing/string).
-    $wrapper_id = $this->buildWrapperId($element, $delta);
+    // SAFE wrapper id (works even if #parents is string).
+    $parents = $element['#parents'] ?? [];
+    if (is_string($parents)) {
+      $parents = [$parents];
+    }
+    elseif (!is_array($parents)) {
+      $parents = [];
+    }
+    $wrapper_id = Html::getUniqueId(implode('-', $parents) . '-fragment-wrapper');
 
     // Default fragment from saved link options (if any).
     $default_fragment = '';
@@ -51,10 +59,7 @@ class LinkWithFragmentWidget extends LinkWidget {
     // Build fragment options based on selected URI.
     $fragment_options = $this->buildFragmentOptions($uri);
 
-    /**
-     * AJAX: refresh fragment dropdown when URI changes.
-     * Note: "change" fires when field loses focus; OK for core autocomplete.
-     */
+    // AJAX: refresh fragment dropdown when URI changes.
     if (isset($element['uri'])) {
       $element['uri']['#ajax'] = [
         'callback' => [static::class, 'ajaxFragmentCallback'],
@@ -64,12 +69,10 @@ class LinkWithFragmentWidget extends LinkWidget {
       ];
     }
 
-    // Wrap fragment select in a container so AJAX replaces only this part.
+    // Wrap fragment select so AJAX replaces only this part.
     $element['fragment_wrapper'] = [
       '#type' => 'container',
-      '#attributes' => [
-        'id' => $wrapper_id,
-      ],
+      '#attributes' => ['id' => $wrapper_id],
     ];
 
     $element['fragment_wrapper']['fragment'] = [
@@ -84,40 +87,21 @@ class LinkWithFragmentWidget extends LinkWidget {
   }
 
   /**
-   * Build a safe, unique wrapper id.
-   */
-  private function buildWrapperId(array $element, int $delta): string {
-    // Prefer #parents if it is an array.
-    if (!empty($element['#parents']) && is_array($element['#parents'])) {
-      return implode('-', $element['#parents']) . '-fragment-wrapper';
-    }
-
-    // Next best: #field_name if present.
-    if (!empty($element['#field_name']) && is_string($element['#field_name'])) {
-      return 'fragment-wrapper-' . $element['#field_name'] . '-' . $delta;
-    }
-
-    // Fallback: always unique enough within the form.
-    return 'fragment-wrapper-' . $delta . '-' . substr(md5(serialize($element)), 0, 8);
-  }
-
-  /**
    * AJAX callback: return only the fragment wrapper container.
    */
   public static function ajaxFragmentCallback(array &$form, FormStateInterface $form_state): array {
     $trigger = $form_state->getTriggeringElement();
     $parents = $trigger['#parents'] ?? [];
 
-    // Typical parents: [..., uri]
-    // We want:        [..., fragment_wrapper]
-    if (is_array($parents) && !empty($parents)) {
-      array_pop($parents);
-      $parents[] = 'fragment_wrapper';
-      return static::nestedElement($form, $parents);
+    if (!is_array($parents) || empty($parents)) {
+      return $form;
     }
 
-    // Fallback (should not happen): return whole form.
-    return $form;
+    // Typical parents: [..., uri] -> replace with fragment_wrapper.
+    array_pop($parents);
+    $parents[] = 'fragment_wrapper';
+
+    return static::nestedElement($form, $parents);
   }
 
   /**
@@ -136,8 +120,6 @@ class LinkWithFragmentWidget extends LinkWidget {
 
   /**
    * Build fragment options for a given URI.
-   *
-   * Returns: ['' => '- None -', 'paragraph-123' => 'paragraph-123', ...]
    */
   private function buildFragmentOptions(string $uri): array {
     $options = ['' => (string) $this->t('- None -')];
@@ -147,7 +129,7 @@ class LinkWithFragmentWidget extends LinkWidget {
       return $options;
     }
 
-    // Change this field name if your paragraph reference field differs.
+    // Your ho_page paragraphs field.
     $field_name = 'field_ho_page_content';
 
     if ($node->hasField($field_name)) {
@@ -169,13 +151,11 @@ class LinkWithFragmentWidget extends LinkWidget {
       return NULL;
     }
 
-    // entity:node/123
     if (str_starts_with($uri, 'entity:node/')) {
       $nid = (int) substr($uri, strlen('entity:node/'));
       return $nid > 0 ? Node::load($nid) : NULL;
     }
 
-    // internal:/node/123 or internal:/alias
     if (str_starts_with($uri, 'internal:')) {
       try {
         $url = Url::fromUri($uri);
@@ -202,10 +182,10 @@ class LinkWithFragmentWidget extends LinkWidget {
       unset($value['fragment_wrapper']);
 
       if (!empty($fragment)) {
-        // Save fragment in link options (recommended).
+        // Recommended: store fragment in options.
         $value['options']['fragment'] = $fragment;
 
-        // Optional: also append into uri (as you requested).
+        // Optional: also append into uri (your requirement).
         if (!empty($value['uri']) && strpos($value['uri'], '#') === FALSE) {
           $value['uri'] .= '#' . $fragment;
         }
