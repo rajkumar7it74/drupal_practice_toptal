@@ -120,45 +120,44 @@ class LinkWithFragmentWidget extends LinkWidget {
    *   ['paragraph-123' => 'paragraph-123', ...]
    */
   private function buildFragmentOptions(string $uri): array {
-  // Debug: see the exact uri.
-  \Drupal::logger('link_fragment_widget')->notice('URI raw = @uri', ['@uri' => $uri]);
 
-  // Remove any existing fragment from uri.
+  // Remove fragment from uri
   $uri = preg_replace('/#.*$/', '', $uri);
-  \Drupal::logger('link_fragment_widget')->notice('URI stripped = @uri', ['@uri' => $uri]);
 
   $options = [];
 
   $node = $this->resolveNodeFromUri($uri);
-
   if (!$node) {
-    \Drupal::logger('link_fragment_widget')->warning('Node resolve failed for uri = @uri', ['@uri' => $uri]);
     return $options;
   }
 
-  \Drupal::logger('link_fragment_widget')->notice('Resolved node id = @nid', ['@nid' => $node->id()]);
-
-  // IMPORTANT: update this if your field name differs.
   $field_name = 'field_ho_page_content';
 
   if (!$node->hasField($field_name)) {
-    \Drupal::logger('link_fragment_widget')->warning('Node @nid does not have field @field', [
-      '@nid' => $node->id(),
-      '@field' => $field_name,
-    ]);
     return $options;
   }
 
   $paragraphs = $node->get($field_name)->referencedEntities();
-  \Drupal::logger('link_fragment_widget')->notice('Paragraph count = @c', ['@c' => count($paragraphs)]);
 
   foreach ($paragraphs as $paragraph) {
-    $key = 'paragraph-' . $paragraph->id();
-    $options[$key] = $key;
+    if (!$paragraph) {
+      continue;
+    }
+
+    $pid = $paragraph->id();
+
+    if (!$pid) {
+      continue; // skip unsaved or invalid paragraph
+    }
+
+    $key = 'paragraph-' . (string) $pid;
+
+    $options[$key] = $key; // guaranteed string
   }
 
   return $options;
 }
+
 
 
   /**
