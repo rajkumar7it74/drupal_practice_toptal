@@ -120,58 +120,84 @@ class LinkWithFragmentWidget extends LinkWidget {
    *   ['paragraph-123' => 'paragraph-123', ...]
    */
   private function buildFragmentOptions(string $uri): array {
-    $options = [];
+  // Debug: see the exact uri.
+  \Drupal::logger('link_fragment_widget')->notice('URI raw = @uri', ['@uri' => $uri]);
 
-    $node = $this->resolveNodeFromUri($uri);
-    if (!$node) {
-      return $options;
-    }
+  // Remove any existing fragment from uri.
+  $uri = preg_replace('/#.*$/', '', $uri);
+  \Drupal::logger('link_fragment_widget')->notice('URI stripped = @uri', ['@uri' => $uri]);
 
-    // IMPORTANT: change if your field machine name differs.
-    $field_name = 'field_ho_page_content';
+  $options = [];
 
-    if ($node->hasField($field_name)) {
-      foreach ($node->get($field_name)->referencedEntities() as $paragraph) {
-        $key = 'paragraph-' . $paragraph->id();
-        $options[$key] = $key;
-      }
-    }
+  $node = $this->resolveNodeFromUri($uri);
 
+  if (!$node) {
+    \Drupal::logger('link_fragment_widget')->warning('Node resolve failed for uri = @uri', ['@uri' => $uri]);
     return $options;
   }
+
+  \Drupal::logger('link_fragment_widget')->notice('Resolved node id = @nid', ['@nid' => $node->id()]);
+
+  // IMPORTANT: update this if your field name differs.
+  $field_name = 'field_ho_page_content';
+
+  if (!$node->hasField($field_name)) {
+    \Drupal::logger('link_fragment_widget')->warning('Node @nid does not have field @field', [
+      '@nid' => $node->id(),
+      '@field' => $field_name,
+    ]);
+    return $options;
+  }
+
+  $paragraphs = $node->get($field_name)->referencedEntities();
+  \Drupal::logger('link_fragment_widget')->notice('Paragraph count = @c', ['@c' => count($paragraphs)]);
+
+  foreach ($paragraphs as $paragraph) {
+    $key = 'paragraph-' . $paragraph->id();
+    $options[$key] = $key;
+  }
+
+  return $options;
+}
+
 
   /**
    * Resolve node entity from uri (supports entity:node/N and internal: paths).
    */
   private function resolveNodeFromUri(string $uri): ?Node {
-    $uri = trim($uri);
-    if ($uri === '') {
+  $uri = trim($uri);
+  if ($uri === '') {
+    return NULL;
+  }
+
+  // entity:node/10
+  if (str_starts_with($uri, 'entity:node/')) {
+    $nid_part = substr($uri, strlen('entity:node/'));
+    $nid_part = preg_replace('/[^0-9].*$/', '', $nid_part); // keep only leading digits
+    $nid = (int) $nid_part;
+    return $nid > 0 ? Node::load($nid) : NULL;
+  }
+
+  // internal:/node/10 or internal:/alias
+  if (str_starts_with($uri, 'internal:')) {
+    $path = substr($uri, strlen('internal:')); // e.g. /node/10 OR /some-alias
+    $path = preg_replace('/[?#].*$/', '', $path);
+
+    /** @var \Drupal\Core\Path\PathValidatorInterface $validator */
+    $validator = \Drupal::service('path.validator');
+    $url = $validator->getUrlIfValid($path);
+    if (!$url) {
       return NULL;
     }
 
-    // entity:node/10
-    if (str_starts_with($uri, 'entity:node/')) {
-      $nid = (int) substr($uri, strlen('entity:node/'));
-      return $nid > 0 ? Node::load($nid) : NULL;
-    }
-
-    // internal:/node/10 or internal:/alias
-    if (str_starts_with($uri, 'internal:')) {
-      try {
-        $url = Url::fromUri($uri);
-        if ($url->isRouted() && $url->getRouteName() === 'entity.node.canonical') {
-          $params = $url->getRouteParameters();
-          $nid = (int) ($params['node'] ?? 0);
-          return $nid > 0 ? Node::load($nid) : NULL;
-        }
-      }
-      catch (\Exception $e) {
-        return NULL;
-      }
-    }
-
-    return NULL;
+    $params = $url->getRouteParameters();
+    $nid = (int) ($params['node'] ?? 0);
+    return $nid > 0 ? Node::load($nid) : NULL;
   }
+
+  return NULL;
+}
+
 
   /**
    * {@inheritdoc}
