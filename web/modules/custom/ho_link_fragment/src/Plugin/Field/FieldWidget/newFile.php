@@ -27,9 +27,8 @@ class LinkWithFragmentWidget extends LinkWidget {
   public function formElement(FieldItemListInterface $items, $delta, array $element, array &$form, FormStateInterface $form_state) {
     $element = parent::formElement($items, $delta, $element, $form, $form_state);
 
-    // Robust unique wrapper id for nested paragraph/node forms.
-    // Example: field_foo-0-subform-field_bar-0-fragment-wrapper
-    $wrapper_id = implode('-', $element['#parents']) . '-fragment-wrapper';
+    // Build a robust unique wrapper id (safe even when #parents is missing/string).
+    $wrapper_id = $this->buildWrapperId($element, $delta);
 
     // Default fragment from saved link options (if any).
     $default_fragment = '';
@@ -39,7 +38,7 @@ class LinkWithFragmentWidget extends LinkWidget {
 
     // Get current URI (prefer form_state value if user changed it).
     $uri = '';
-    if (isset($element['uri']['#parents'])) {
+    if (isset($element['uri']['#parents']) && is_array($element['uri']['#parents'])) {
       $current = $form_state->getValue($element['uri']['#parents']);
       if (is_string($current)) {
         $uri = $current;
@@ -85,6 +84,24 @@ class LinkWithFragmentWidget extends LinkWidget {
   }
 
   /**
+   * Build a safe, unique wrapper id.
+   */
+  private function buildWrapperId(array $element, int $delta): string {
+    // Prefer #parents if it is an array.
+    if (!empty($element['#parents']) && is_array($element['#parents'])) {
+      return implode('-', $element['#parents']) . '-fragment-wrapper';
+    }
+
+    // Next best: #field_name if present.
+    if (!empty($element['#field_name']) && is_string($element['#field_name'])) {
+      return 'fragment-wrapper-' . $element['#field_name'] . '-' . $delta;
+    }
+
+    // Fallback: always unique enough within the form.
+    return 'fragment-wrapper-' . $delta . '-' . substr(md5(serialize($element)), 0, 8);
+  }
+
+  /**
    * AJAX callback: return only the fragment wrapper container.
    */
   public static function ajaxFragmentCallback(array &$form, FormStateInterface $form_state): array {
@@ -93,10 +110,14 @@ class LinkWithFragmentWidget extends LinkWidget {
 
     // Typical parents: [..., uri]
     // We want:        [..., fragment_wrapper]
-    array_pop($parents);
-    $parents[] = 'fragment_wrapper';
+    if (is_array($parents) && !empty($parents)) {
+      array_pop($parents);
+      $parents[] = 'fragment_wrapper';
+      return static::nestedElement($form, $parents);
+    }
 
-    return static::nestedElement($form, $parents);
+    // Fallback (should not happen): return whole form.
+    return $form;
   }
 
   /**
@@ -106,7 +127,6 @@ class LinkWithFragmentWidget extends LinkWidget {
     $ref = $array;
     foreach ($parents as $p) {
       if (!isset($ref[$p])) {
-        // Fallback (should not happen if parents are correct).
         return $array;
       }
       $ref = $ref[$p];
