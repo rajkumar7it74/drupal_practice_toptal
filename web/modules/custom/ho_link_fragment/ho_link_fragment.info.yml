@@ -1,0 +1,8 @@
+name: HO Link Fragment Widget
+type: module
+description: Adds a fragment dropdown to Link widget based on target page paragraphs (AJAX).
+core_version_requirement: ^11
+package: Custom
+dependencies:
+  - drupal:link
+  - drupal:paragraphs
