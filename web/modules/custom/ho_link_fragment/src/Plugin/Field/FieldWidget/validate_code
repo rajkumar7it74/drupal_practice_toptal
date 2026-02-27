@@ -1,0 +1,132 @@
+<?php
+
+namespace Drupal\link_fragment_widget\Plugin\Field\FieldWidget;
+
+use Drupal\Core\Field\FieldItemListInterface;
+use Drupal\Core\Field\WidgetBase;
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Ajax\AjaxResponse;
+use Drupal\Core\Ajax\HtmlCommand;
+use Drupal\Core\Ajax\InvokeCommand;
+use Drupal\paragraphs\Entity\Paragraph;
+
+/**
+ * Plugin implementation of the 'fragment_id_widget' widget.
+ *
+ * @FieldWidget(
+ *   id = "fragment_id_widget",
+ *   label = @Translation("Fragment ID Widget"),
+ *   field_types = {
+ *     "string"
+ *   }
+ * )
+ */
+class FragmentIdWidget extends WidgetBase {
+
+  /**
+   * {@inheritdoc}
+   */
+  public function formElement(FieldItemListInterface $items, $delta, array $element, array &$form, FormStateInterface $form_state) {
+    $value = $items[$delta]->value ?? '';
+    $wrapper_id = 'fragment-id-message-' . $delta;
+    $paragraph = $items->getEntity();
+    if ($paragraph instanceof Paragraph && !$paragraph->isNew()) {
+      $paragraph_id = $paragraph->id();
+      $bundle = $paragraph->bundle();
+      $bund = $bundle . $paragraph_id;
+      \Drupal::logger('link_fragment_widget')->error('paragraph: @paragraph_type', [
+          '@paragraph_type' => $bund,
+        ]);
+      if ($paragraph->bundle() === 'ho_accordion_item') {
+        $parent = $paragraph->getParentEntity();
+        $parent_bundle = $parent->bundle();
+        $wrapper_id = 'fragment-id-message-section-' . $paragraph_id . '-' . $delta;
+        \Drupal::logger('link_fragment_widget')->error('parent: @paragraph_type', [
+          '@paragraph_type' => $parent_bundle,
+        ]);
+      }
+      $wrapper_id = 'fragment-id-message-' . $paragraph_id . '-' . $delta;
+    }
+    $element['value'] = [
+      '#type' => 'textfield',
+      '#title' => $this->fieldDefinition->getLabel(),
+      '#default_value' => $value,
+      '#ajax' => [
+        'callback' => [$this, 'validateFragmentId'],
+        'event' => 'change',
+        'wrapper' => $wrapper_id,
+      ],
+      '#description' => $this->fieldDefinition->getDescription(),
+    ];
+    $element['message'] = [
+      '#type' => 'container',
+      '#attributes' => ['id' => $wrapper_id],
+    ];
+
+    return $element;
+  }
+
+  /**
+   * Custom validator for the fragment ID field.
+   */
+  public function validateFragmentId(array &$form, FormStateInterface $form_state) {
+    $response = new AjaxResponse();
+    // Get the value using the element parents.
+    $triggering_element = $form_state->getTriggeringElement();
+    $parents = $triggering_element['#parents'];
+    $wrapper_id = $triggering_element['#ajax']['wrapper'];
+
+    // Get the raw value.
+    $raw_value = $form_state->getValue($parents);
+
+    // Step 1: convert to lowercase
+    $value = strtolower($raw_value);
+    // Step 2: replace spaces with hyphens
+    $value = str_replace(' ', '-', $value);
+    // Step 3: strip out any remaining invalid characters (only allow a–z, 0–9, underscore, hyphen)
+    $normalized = preg_replace('/[^a-z0-9_-]/', '', $value);
+
+    // Update the form state with the cleaned value.
+    $form_state->setValue($parents, $normalized);
+
+    if ($normalized !== $raw_value) {
+      $response->addCommand(new HtmlCommand('#' . $wrapper_id,
+        '<div class="messages messages--warning">' .
+        $this->t('Invalid characters were removed. Cleaned value: @val', ['@val' => $normalized]) .
+        '</div>'
+      ));
+    }
+    elseif ($normalized === '') {
+      $response->addCommand(new HtmlCommand('#' . $wrapper_id,
+        '<div class="messages messages--error">' .
+        $this->t('The fragment ID cannot be empty.') .
+        '</div>'
+      ));
+    }
+    else {
+      $response->addCommand(new HtmlCommand('#' . $wrapper_id,
+        '<div class="messages messages--status">' .
+        $this->t('Valid fragment ID: @val', ['@val' => $normalized]) .
+        '</div>'
+      ));
+    }
+    return $response;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function massageFormValues(array $values, array $form, FormStateInterface $form_state) {
+    foreach ($values as &$item) {
+      if (isset($item['value'])) {
+        // Normalize: lowercase, replace spaces with hyphens, strip invalid chars.
+        $clean = strtolower($item['value']);
+        $clean = str_replace(' ', '-', $clean);
+        $clean = preg_replace('/[^a-z0-9_-]/', '', $clean);
+        $item['value'] = $clean;
+      }
+    }
+    return $values;
+  }
+
+}
