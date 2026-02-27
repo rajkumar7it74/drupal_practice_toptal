@@ -9,6 +9,7 @@ use Drupal\Core\Ajax\AjaxResponse;
 use Drupal\Core\Ajax\HtmlCommand;
 use Drupal\Core\Ajax\InvokeCommand;
 use Drupal\paragraphs\Entity\Paragraph;
+use Drupal\Component\Utility\Html;
 
 /**
  * Plugin implementation of the 'fragment_id_widget' widget.
@@ -28,25 +29,16 @@ class FragmentIdWidget extends WidgetBase {
    */
   public function formElement(FieldItemListInterface $items, $delta, array $element, array &$form, FormStateInterface $form_state) {
     $value = $items[$delta]->value ?? '';
-    $wrapper_id = 'fragment-id-message-' . $delta;
-    $paragraph = $items->getEntity();
-    if ($paragraph instanceof Paragraph && !$paragraph->isNew()) {
-      $paragraph_id = $paragraph->id();
-      $bundle = $paragraph->bundle();
-      $bund = $bundle . $paragraph_id;
-      \Drupal::logger('link_fragment_widget')->error('paragraph: @paragraph_type', [
-          '@paragraph_type' => $bund,
-        ]);
-      if ($paragraph->bundle() === 'ho_accordion_item') {
-        $parent = $paragraph->getParentEntity();
-        $parent_bundle = $parent->bundle();
-        $wrapper_id = 'fragment-id-message-section-' . $paragraph_id . '-' . $delta;
-        \Drupal::logger('link_fragment_widget')->error('parent: @paragraph_type', [
-          '@paragraph_type' => $parent_bundle,
-        ]);
-      }
-      $wrapper_id = 'fragment-id-message-' . $paragraph_id . '-' . $delta;
+    $entity = $items->getEntity();
+
+    // Always unique, even for new paragraphs.
+    $unique_key = 'field';
+    if ($entity instanceof Paragraph) {
+      // uuid exists even when entity isNew().
+      $unique_key = $entity->uuid();
     }
+    $wrapper_id = Html::getId('fragment-id-message-' . $unique_key . '-' . $delta);
+
     $element['value'] = [
       '#type' => 'textfield',
       '#title' => $this->fieldDefinition->getLabel(),
@@ -80,7 +72,7 @@ class FragmentIdWidget extends WidgetBase {
     $raw_value = $form_state->getValue($parents);
 
     // Step 1: convert to lowercase
-    $value = strtolower($raw_value);
+    $value = strtolower((string) $raw_value);
     // Step 2: replace spaces with hyphens
     $value = str_replace(' ', '-', $value);
     // Step 3: strip out any remaining invalid characters (only allow a–z, 0–9, underscore, hyphen)
