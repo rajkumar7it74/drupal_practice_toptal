@@ -1,0 +1,71 @@
+  /**
+   * Build fragment options from the selected node.
+   * Includes:
+   * - ho_section.field_ho_section_id
+   * - ho_accordion_item.field_ho_section_id (nested inside ho_section -> ho_accordion -> items)
+   */
+  protected function buildSelectOptions(string $uri): array {
+    $node = $this->resolveNodeFromUri($uri);
+    if (!$node) {
+      return [];
+    }
+
+    $options = [];
+
+    if ($node->hasField('field_ho_page_content')) {
+      foreach ($node->get('field_ho_page_content')->referencedEntities() as $paragraph) {
+        if ($paragraph) {
+          $this->collectFragmentIdsFromParagraph($paragraph, $options);
+        }
+      }
+    }
+
+    // Optional: sort.
+    ksort($options);
+
+    return $options;
+  }
+
+  /**
+   * Recursively collect fragment IDs from a paragraph and its children.
+   */
+  protected function collectFragmentIdsFromParagraph($paragraph, array &$options): void {
+    if (!$paragraph) {
+      return;
+    }
+
+    // If this paragraph has field_ho_section_id, collect it.
+    if ($paragraph->hasField('field_ho_section_id') && !$paragraph->get('field_ho_section_id')->isEmpty()) {
+      $raw = (string) $paragraph->get('field_ho_section_id')->value;
+      $raw = strip_tags($raw);
+
+      $fragment_id = $this->normalizeFragmentId($raw);
+      if ($fragment_id !== '') {
+        $options[$fragment_id] = $fragment_id;
+      }
+    }
+
+    // Walk through known child reference fields (expand this list if needed).
+    $child_fields = [
+      'field_ho_section_items',   // ho_section -> items
+      'field_ho_accordion_item',  // ho_accordion -> items
+    ];
+
+    foreach ($child_fields as $field_name) {
+      if ($paragraph->hasField($field_name) && !$paragraph->get($field_name)->isEmpty()) {
+        foreach ($paragraph->get($field_name)->referencedEntities() as $child) {
+          $this->collectFragmentIdsFromParagraph($child, $options);
+        }
+      }
+    }
+  }
+
+  /**
+   * Normalizes a fragment ID same as your widget rules.
+   */
+  protected function normalizeFragmentId(string $value): string {
+    $value = strtolower(trim($value));
+    $value = str_replace(' ', '-', $value);
+    $value = preg_replace('/[^a-z0-9_-]/', '', $value);
+    return (string) $value;
+  }
